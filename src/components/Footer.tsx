@@ -75,7 +75,7 @@ export default async function Footer() {
                 IN
               </a>
               <a
-                href="https://wa.me"
+                href="https://wa.me/2290153472488"
                 target="_blank"
                 rel="noreferrer"
                 className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500 hover:text-emerald-400 flex items-center justify-center transition text-[10px] font-bold"

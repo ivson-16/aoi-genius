@@ -62,7 +62,7 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Adresse E-mail</span>
-                  <span className="text-white font-semibold">contact@aoigenius.org</span>
+                  <a href="mailto:aiogenius@gmail.com" className="text-white font-semibold hover:text-cyan-300 transition">aiogenius@gmail.com</a>
                 </div>
               </div>
 
@@ -72,7 +72,7 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Support WhatsApp</span>
-                  <span className="text-white font-semibold">+229 97 00 22 33</span>
+                  <span className="text-white font-semibold">+229 01 53 47 24 88</span>
                 </div>
               </div>
 
@@ -88,7 +88,7 @@ export default function ContactPage() {
             </div>
 
             <a
-              href="https://wa.me/22997002233"
+              href="https://wa.me/2290153472488"
               target="_blank"
               rel="noreferrer"
               className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/20"

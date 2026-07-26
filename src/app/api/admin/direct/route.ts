@@ -10,7 +10,10 @@ import { ensureDbInitialized } from "@/lib/db-init";
  */
 async function checkAdmin(email: string, password: string) {
   const r = await pool.query(
-    "SELECT id, name, role FROM users WHERE LOWER(email) = LOWER($1) AND password_hash = $2 AND is_active = true",
+    `SELECT id, name, email, role, is_primary_admin, photo, country, city,
+            profession, expertise_domain, bio, whatsapp
+     FROM users
+     WHERE LOWER(email) = LOWER($1) AND password_hash = $2 AND is_active = true`,
     [email, password]
   );
   if (r.rows.length === 0 || r.rows[0].role !== "admin") return null;
@@ -37,7 +40,11 @@ export async function POST(request: Request) {
     if (op === "load") {
       const [usersRes, pubsRes, catsRes, newsRes] = await Promise.all([
         pool.query(
-          "SELECT id, email, name, role, membership_status, photo, country, city, profession, expertise_domain, bio, whatsapp, created_at FROM users ORDER BY (membership_status = 'pending') DESC, id ASC"
+          `SELECT id, email, name, role, membership_status, is_primary_admin, photo,
+                  country, city, profession, expertise_domain, bio, whatsapp, created_at
+           FROM users
+           ORDER BY is_primary_admin DESC, (role = 'admin') DESC,
+                    (membership_status = 'pending') DESC, id ASC`
         ),
         pool.query(
           `SELECT p.*, c.name AS category_name, u.name AS author_name
@@ -82,6 +89,64 @@ export async function POST(request: Request) {
         ]
       );
       return NextResponse.json({ success: true });
+    }
+
+    // ----- Hiérarchie des administrateurs -----------------------------------
+    // Seul l'administrateur principal peut nommer ou retirer des admins.
+    if (op === "setAdminRole") {
+      if (!admin.is_primary_admin) {
+        return NextResponse.json(
+          { error: "Seul l'administrateur principal peut gérer les autres administrateurs." },
+          { status: 403 }
+        );
+      }
+
+      const targetId = parseInt(payload?.id, 10);
+      const makeAdmin = Boolean(payload?.makeAdmin);
+      if (!targetId) {
+        return NextResponse.json({ error: "Utilisateur invalide." }, { status: 400 });
+      }
+
+      const targetResult = await pool.query(
+        "SELECT id,name,role,membership_status,is_primary_admin FROM users WHERE id=$1",
+        [targetId]
+      );
+      const target = targetResult.rows[0];
+      if (!target) return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
+      if (target.is_primary_admin) {
+        return NextResponse.json(
+          { error: "Le rôle de l'administrateur principal ne peut pas être retiré." },
+          { status: 403 }
+        );
+      }
+      if (makeAdmin && target.membership_status !== "approved") {
+        return NextResponse.json(
+          { error: "Vous devez d'abord approuver l'adhésion de cette personne." },
+          { status: 400 }
+        );
+      }
+
+      const newRole = makeAdmin ? "admin" : "member";
+      await pool.query(
+        `UPDATE users
+         SET role=$1, membership_status='approved', is_primary_admin=false, updated_at=NOW()
+         WHERE id=$2`,
+        [newRole, targetId]
+      );
+      await pool.query(
+        `INSERT INTO notifications(user_id,title,message,link,type)
+         VALUES($1,$2,$3,$4,$5)`,
+        [
+          targetId,
+          makeAdmin ? "Vous êtes maintenant administrateur" : "Mise à jour de vos responsabilités",
+          makeAdmin
+            ? "L'administrateur principal vous a accordé des privilèges d'administration sur AOI Genius. Utilisez-les avec responsabilité et dans l'intérêt de la communauté."
+            : "L'administrateur principal a retiré vos responsabilités administratives. Votre adhésion membre reste active.",
+          makeAdmin ? "/admin" : "/dashboard",
+          makeAdmin ? "success" : "info",
+        ]
+      );
+      return NextResponse.json({ success: true, role: newRole });
     }
 
     // ----- Modération d'une publication -------------------------------------

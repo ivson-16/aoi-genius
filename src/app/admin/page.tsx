@@ -236,6 +236,16 @@ export default function AdminConsole() {
     setUsers((prev) => prev.filter((u) => u.id !== id));
   }
 
+  async function setAdminRole(id: number, makeAdmin: boolean) {
+    const wording = makeAdmin ? "nommer cette personne administrateur" : "retirer ses privilèges administrateur";
+    if (!confirm(`Voulez-vous vraiment ${wording} ?`)) return;
+    const d = await call("setAdminRole", { id, makeAdmin });
+    if (d.error) return alert(d.error);
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, role: makeAdmin ? "admin" : "member" } : u))
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Header */}
@@ -394,12 +404,14 @@ export default function AdminConsole() {
                 <div className="flex flex-col items-end gap-1">
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                      u.role === "admin"
+                      u.is_primary_admin
+                        ? "bg-orange-500/25 text-orange-300 border border-orange-500/40"
+                        : u.role === "admin"
                         ? "bg-amber-500/20 text-amber-300"
                         : "bg-blue-500/20 text-blue-300"
                     }`}
                   >
-                    {u.role}
+                    {u.is_primary_admin ? "Admin principal" : u.role === "admin" ? "Administrateur" : "Membre"}
                   </span>
                   {u.role !== "admin" && u.membership_status !== "approved" && (
                     <span
@@ -414,8 +426,20 @@ export default function AdminConsole() {
                   )}
                 </div>
               </div>
-              {u.role !== "admin" && (
-                <div className="pt-2 border-t border-slate-800 flex justify-end">
+              <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-end gap-2">
+                {admin?.is_primary_admin && !u.is_primary_admin && u.membership_status === "approved" && (
+                  <button
+                    onClick={() => setAdminRole(u.id, u.role !== "admin")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      u.role === "admin"
+                        ? "bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25"
+                        : "bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25"
+                    }`}
+                  >
+                    {u.role === "admin" ? "Retirer le rôle Admin" : "Nommer Administrateur"}
+                  </button>
+                )}
+                {u.role !== "admin" && (
                   <button
                     onClick={() => deleteUser(u.id)}
                     className="p-1.5 bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 rounded-lg"
@@ -423,8 +447,8 @@ export default function AdminConsole() {
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -639,6 +663,23 @@ function EditProfileForm({ admin, call, onDone }: any) {
   const [bio, setBio] = useState(admin?.bio || "");
   const [whatsapp, setWhatsapp] = useState(admin?.whatsapp || "");
   const [ok, setOk] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
+
+  function selectPhoto(file: File) {
+    if (!file.type.startsWith("image/")) return alert("Veuillez choisir une image.");
+    if (file.size > 2 * 1024 * 1024) return alert("Photo trop lourde. Maximum : 2 Mo.");
+    setPhotoLoading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPhoto(String(reader.result || ""));
+      setPhotoLoading(false);
+    };
+    reader.onerror = () => {
+      setPhotoLoading(false);
+      alert("Impossible de lire cette photo.");
+    };
+    reader.readAsDataURL(file);
+  }
 
   return (
     <form
@@ -666,7 +707,17 @@ function EditProfileForm({ admin, call, onDone }: any) {
         <input type="text" value={expertiseDomain} onChange={(e) => setExpertiseDomain(e.target.value)} placeholder="Expertise" className="bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white" />
         <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="WhatsApp" className="bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white" />
       </div>
-      <input type="text" value={photo} onChange={(e) => setPhoto(e.target.value)} placeholder="URL de la photo" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white" />
+      <div className="space-y-3 p-4 rounded-2xl bg-slate-800/40 border border-slate-700">
+        <p className="text-xs font-bold text-slate-200">Photo de profil</p>
+        {photo && (
+          <img src={photo} alt="Aperçu du profil" className="w-24 h-24 rounded-2xl object-cover border-2 border-amber-400" />
+        )}
+        <input type="text" value={photo} onChange={(e) => setPhoto(e.target.value)} placeholder="URL de la photo (optionnel)" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white" />
+        <label className="block cursor-pointer text-center p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-bold">
+          {photoLoading ? "Lecture de la photo..." : "Choisir une photo depuis mon appareil (max. 2 Mo)"}
+          <input type="file" accept="image/*" className="hidden" disabled={photoLoading} onChange={(e) => e.target.files?.[0] && selectPhoto(e.target.files[0])} />
+        </label>
+      </div>
       <textarea rows={3} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Biographie" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white" />
       <button className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl flex items-center gap-2">
         <Save className="w-4 h-4" /> Enregistrer

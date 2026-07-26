@@ -113,11 +113,17 @@ export async function ensureDbInitialized() {
 
       ALTER TABLE publications ADD COLUMN IF NOT EXISTS video_url TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS membership_status TEXT DEFAULT 'approved';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_primary_admin BOOLEAN DEFAULT false NOT NULL;
     `);
 
-    // Les administrateurs sont toujours approuvés
+    // Le fondateur est l'administrateur principal permanent.
+    // Les administrateurs sont toujours des membres approuvés.
     await client.query(`
       UPDATE users SET membership_status = 'approved' WHERE role = 'admin' AND membership_status IS DISTINCT FROM 'approved';
+      UPDATE users SET is_primary_admin = false WHERE is_primary_admin = true AND LOWER(email) <> LOWER('Kindeivson@gmail.com');
+      UPDATE users
+      SET role = 'admin', membership_status = 'approved', is_primary_admin = true
+      WHERE LOWER(email) = LOWER('Kindeivson@gmail.com');
     `);
 
     // Attach demo videos to existing seeded publications (idempotent)

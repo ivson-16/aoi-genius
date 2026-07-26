@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { pool } from "@/db";
 import { ensureDbInitialized } from "@/lib/db-init";
 
+/**
+ * Upload compatible Vercel : aucun accès au système de fichiers en lecture seule.
+ * Le fichier est transformé en data URL, puis enregistré dans PostgreSQL avec
+ * le profil ou la publication. Cette approche convient aux photos compressées
+ * et aux petits rapports PDF.
+ */
 export async function POST(request: Request) {
   try {
     await ensureDbInitialized();
@@ -31,19 +35,27 @@ export async function POST(request: Request) {
     if (!isImage && !isPdf) {
       return NextResponse.json({ error: "Seules les images et les PDF sont acceptés." }, { status: 400 });
     }
-    const max = isPdf ? 25 * 1024 * 1024 : 5 * 1024 * 1024;
+
+    // Limites raisonnables pour le stockage PostgreSQL et les fonctions Vercel.
+    const max = isPdf ? 3 * 1024 * 1024 : 2 * 1024 * 1024;
     if (file.size > max) {
-      return NextResponse.json({ error: `Fichier trop lourd. Maximum : ${isPdf ? "25" : "5"} Mo.` }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: isPdf
+            ? "PDF trop lourd. Maximum 3 Mo. Compressez-le ou utilisez un lien externe."
+            : "Photo trop lourde. Maximum 2 Mo. Réduisez sa taille puis réessayez.",
+        },
+        { status: 400 }
+      );
     }
 
-    const dir = path.join(process.cwd(), "public", "uploads");
-    await mkdir(dir, { recursive: true });
-    const ext = path.extname(file.name) || (isPdf ? ".pdf" : ".jpg");
-    const base = path.basename(file.name, ext).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 50) || "fichier";
-    const filename = `${Date.now()}-${base}${ext}`;
-    await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
-    return NextResponse.json({ success: true, url: `/uploads/${filename}` });
+    const mime = isPdf ? "application/pdf" : file.type;
+    const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+    const dataUrl = `data:${mime};base64,${base64}`;
+
+    return NextResponse.json({ success: true, url: dataUrl, kind: isPdf ? "pdf" : "image" });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Erreur d’upload." }, { status: 500 });
+    console.error("Member upload:", error);
+    return NextResponse.json({ error: error.message || "Erreur pendant l’envoi." }, { status: 500 });
   }
 }

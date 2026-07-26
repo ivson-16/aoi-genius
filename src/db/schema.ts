@@ -13,7 +13,8 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name").notNull(),
-  role: text("role").default("member").notNull(), // 'visitor', 'member', 'admin'
+  role: text("role").default("member").notNull(), // 'member', 'admin'
+  isPrimaryAdmin: boolean("is_primary_admin").default(false).notNull(),
   photo: text("photo"),
   country: text("country").default("Bénin"),
   city: text("city").default("Cotonou"),
