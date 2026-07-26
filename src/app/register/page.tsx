@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, storeSessionToken } from "@/context/AuthContext";
 import { Lightbulb, Lock, Mail, User, ShieldCheck, ArrowRight, CheckCircle2 } from "lucide-react";
 
 export default function RegisterPage() {
@@ -47,8 +47,13 @@ export default function RegisterPage() {
       });
       const data = await res.json();
       if (data.success && data.user) {
+        // Stocke le jeton de session sur tous les canaux disponibles
+        if (data.token) {
+          storeSessionToken(data.token);
+        }
         setUser(data.user);
-        router.push("/dashboard");
+        const q = data.token ? `?_aoi=${encodeURIComponent(data.token)}` : "";
+        window.location.assign(`/dashboard${q}`);
       } else {
         setError(data.error || "Erreur lors de la création du compte.");
       }
@@ -68,7 +73,17 @@ export default function RegisterPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white">Rejoindre AOI Genius</h1>
           <p className="text-xs text-slate-300">
-            Créez votre compte Membre pour publier vos innovations et collaborer avec la communauté.
+            Déposez votre demande d'adhésion. Après examen et approbation par l'administration,
+            vous bénéficierez de tous les privilèges de membre.
+          </p>
+        </div>
+
+        <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-3.5 flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-slate-300 leading-relaxed">
+            <strong className="text-amber-300">Adhésion contrôlée :</strong> votre inscription crée une demande
+            d'adhésion. Un administrateur l'examinera et vous serez notifié de la décision. En attendant,
+            vous pourrez consulter librement la plateforme.
           </p>
         </div>
 
@@ -171,7 +186,7 @@ export default function RegisterPage() {
             disabled={loading}
             className="w-full py-3 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-xs sm:text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20"
           >
-            <span>{loading ? "Création du compte..." : "Créer mon Compte Membre"}</span>
+            <span>{loading ? "Envoi de la demande..." : "Envoyer ma Demande d'Adhésion"}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>

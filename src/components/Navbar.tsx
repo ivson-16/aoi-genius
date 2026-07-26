@@ -21,7 +21,7 @@ import {
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, role, logout, switchDemoRole, theme, toggleTheme } = useAuth();
+  const { user, role, logout, theme, toggleTheme } = useAuth();
   const { lang, t, setLang } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -57,33 +57,21 @@ export default function Navbar() {
             <span className="sm:hidden">{t("nav.subtitle")}</span>
           </div>
 
-          {/* Quick Demo Switcher Toolbar */}
+          {/* Statut de connexion sécurisé */}
           <div className="hidden md:flex items-center gap-2 text-xs">
-            <span className="text-white/80 font-normal">{t("nav.demoRole")}</span>
-            <button
-              onClick={() => switchDemoRole("visitor")}
-              className={`px-2 py-0.5 rounded transition ${
-                role === "visitor" ? "bg-[#ffffff] text-blue-900 font-bold shadow-sm" : "bg-black/20 hover:bg-black/40 text-white"
-              }`}
-            >
-              {t("nav.visitor")}
-            </button>
-            <button
-              onClick={() => switchDemoRole("member")}
-              className={`px-2 py-0.5 rounded transition ${
-                role === "member" ? "bg-emerald-400 text-slate-950 font-bold shadow-sm" : "bg-black/20 hover:bg-black/40 text-white"
-              }`}
-            >
-              {t("nav.member")}
-            </button>
-            <button
-              onClick={() => switchDemoRole("admin")}
-              className={`px-2 py-0.5 rounded transition ${
-                role === "admin" ? "bg-amber-400 text-slate-950 font-bold shadow-sm" : "bg-black/20 hover:bg-black/40 text-white"
-              }`}
-            >
-              {t("nav.admin")}
-            </button>
+            {user ? (
+              <span className="flex items-center gap-1.5 bg-black/20 px-2.5 py-0.5 rounded-full text-white/90">
+                <span className={`w-1.5 h-1.5 rounded-full ${role === "admin" ? "bg-amber-300" : "bg-emerald-300"}`} />
+                <span className="font-semibold">{user.name.split(" ")[0]}</span>
+                <span className="text-white/60">•</span>
+                <span className="capitalize">{role === "admin" ? t("nav.admin") : t("nav.member")}</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 bg-black/20 px-2.5 py-0.5 rounded-full text-white/70">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                <span>{t("nav.visitor")}</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -268,44 +256,24 @@ export default function Navbar() {
               ))}
             </div>
 
-            <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
-              <span className="text-xs text-slate-400 font-semibold">{t("nav.demoRole")}</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    switchDemoRole("visitor");
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`flex-1 py-1.5 rounded text-xs font-bold ${
-                    role === "visitor" ? "bg-[#ffffff] text-slate-900" : "bg-slate-800 text-slate-300"
-                  }`}
+            {!user && (
+              <div className="pt-3 border-t border-slate-800 flex gap-2">
+                <Link
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold text-center"
                 >
-                  {t("nav.visitor")}
-                </button>
-                <button
-                  onClick={() => {
-                    switchDemoRole("member");
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`flex-1 py-1.5 rounded text-xs font-bold ${
-                    role === "member" ? "bg-emerald-400 text-slate-950" : "bg-slate-800 text-slate-300"
-                  }`}
+                  {t("nav.login")}
+                </Link>
+                <Link
+                  href="/register"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex-1 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-xs font-bold text-center"
                 >
-                  {t("nav.member")}
-                </button>
-                <button
-                  onClick={() => {
-                    switchDemoRole("admin");
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`flex-1 py-1.5 rounded text-xs font-bold ${
-                    role === "admin" ? "bg-amber-400 text-slate-950" : "bg-slate-800 text-slate-300"
-                  }`}
-                >
-                  {t("nav.admin")}
-                </button>
+                  {t("nav.join")}
+                </Link>
               </div>
-            </div>
+            )}
           </div>
         )}
       </header>

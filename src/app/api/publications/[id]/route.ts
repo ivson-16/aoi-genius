@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { pool } from "@/db";
 import { getPublicationById } from "@/lib/data";
 import { ensureDbInitialized } from "@/lib/db-init";
+import { getSessionUser } from "@/lib/auth";
+
+const UNAUTHORIZED = () =>
+  NextResponse.json({ error: "Vous devez être connecté pour effectuer cette action." }, { status: 401 });
+
+const FORBIDDEN = () =>
+  NextResponse.json({ error: "Accès refusé. Vous n'avez pas les privilèges nécessaires." }, { status: 403 });
 
 export async function GET(
   request: Request,
@@ -35,14 +42,26 @@ export async function PUT(
 ) {
   try {
     await ensureDbInitialized();
+    const sessionUser = await getSessionUser();
+    if (!sessionUser) return UNAUTHORIZED();
+
     const { id } = await params;
     const pubId = parseInt(id, 10);
     const body = await request.json();
 
     const { action, status, rejectionReason, title, summary, content, categoryId, coverImage, pdfUrl, videoUrl } = body;
 
+    // Vérification de propriété : auteur ou admin uniquement
+    const pubCheck = await pool.query("SELECT author_id FROM publications WHERE id = $1", [pubId]);
+    if (pubCheck.rows.length === 0) {
+      return NextResponse.json({ error: "Publication non trouvée" }, { status: 404 });
+    }
+    const isOwner = pubCheck.rows[0].author_id === sessionUser.id;
+    const isAdmin = sessionUser.role === "admin";
+
     // Admin moderation action
     if (action === "moderate") {
+      if (!isAdmin) return FORBIDDEN();
       const res = await pool.query(
         "UPDATE publications SET status = $1, rejection_reason = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
         [status, rejectionReason || null, pubId]
@@ -67,7 +86,9 @@ export async function PUT(
       return NextResponse.json({ success: true, publication: pub });
     }
 
-    // General update
+    // General update : auteur ou admin uniquement
+    if (!isOwner && !isAdmin) return FORBIDDEN();
+
     const updateRes = await pool.query(
       `UPDATE publications 
        SET title = COALESCE($1, title), 
@@ -98,7 +119,25 @@ export async function POST(
     const { id } = await params;
     const pubId = parseInt(id, 10);
     const body = await request.json();
-    const { action, userId, content } = body;
+    const { action, content } = body;
+
+    // Le téléchargement (compteur) reste public
+    if (action === "download") {
+      await pool.query("UPDATE publications SET downloads_count = downloads_count + 1 WHERE id = $1", [pubId]);
+      return NextResponse.json({ success: true });
+    }
+
+    // Like et commentaire : réservés aux MEMBRES APPROUVÉS (ou admin).
+    // L'identité vient de la session serveur — impossible d'usurper un autre membre.
+    const sessionUser = await getSessionUser();
+    if (!sessionUser) return UNAUTHORIZED();
+    if (sessionUser.role !== "admin" && sessionUser.membership_status !== "approved") {
+      return NextResponse.json(
+        { error: "Votre adhésion est en attente de validation. Vous pourrez interagir dès qu'elle sera approuvée par l'administrateur." },
+        { status: 403 }
+      );
+    }
+    const userId = sessionUser.id;
 
     if (action === "like") {
       const existing = await pool.query("SELECT id FROM likes WHERE publication_id = $1 AND user_id = $2", [pubId, userId]);
@@ -117,24 +156,24 @@ export async function POST(
     }
 
     if (action === "comment") {
-      if (!content || !userId) {
-        return NextResponse.json({ error: "Commentaire vide ou utilisateur non connecté." }, { status: 400 });
+      if (!content) {
+        return NextResponse.json({ error: "Le commentaire ne peut pas être vide." }, { status: 400 });
       }
       const commentRes = await pool.query(
         `INSERT INTO comments (publication_id, user_id, content)
          VALUES ($1, $2, $3)
          RETURNING *`,
-        [pubId, parseInt(userId, 10), content]
+        [pubId, userId, content]
       );
-      
+
       const pubAuthor = await pool.query("SELECT author_id, title FROM publications WHERE id = $1", [pubId]);
-      if (pubAuthor.rows.length > 0 && pubAuthor.rows[0].author_id !== parseInt(userId, 10)) {
+      if (pubAuthor.rows.length > 0 && pubAuthor.rows[0].author_id !== userId) {
         await pool.query(
           "INSERT INTO notifications (user_id, title, message, link, type) VALUES ($1, $2, $3, $4, $5)",
           [
             pubAuthor.rows[0].author_id,
             "Nouveau commentaire reçu",
-            `Un membre a commenté votre publication "${pubAuthor.rows[0].title}".`,
+            `${sessionUser.name} a commenté votre publication "${pubAuthor.rows[0].title}".`,
             `/publications/${pubId}`,
             "info"
           ]
@@ -142,11 +181,6 @@ export async function POST(
       }
 
       return NextResponse.json({ success: true, comment: commentRes.rows[0] });
-    }
-
-    if (action === "download") {
-      await pool.query("UPDATE publications SET downloads_count = downloads_count + 1 WHERE id = $1", [pubId]);
-      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ error: "Action non valide" }, { status: 400 });
@@ -161,8 +195,23 @@ export async function DELETE(
 ) {
   try {
     await ensureDbInitialized();
+
+    // Sécurité : seul l'auteur ou un admin peut supprimer.
+    const sessionUser = await getSessionUser();
+    if (!sessionUser) return UNAUTHORIZED();
+
     const { id } = await params;
     const pubId = parseInt(id, 10);
+
+    const pubCheck = await pool.query("SELECT author_id FROM publications WHERE id = $1", [pubId]);
+    if (pubCheck.rows.length === 0) {
+      return NextResponse.json({ error: "Publication non trouvée" }, { status: 404 });
+    }
+
+    const isOwner = pubCheck.rows[0].author_id === sessionUser.id;
+    const isAdmin = sessionUser.role === "admin";
+    if (!isOwner && !isAdmin) return FORBIDDEN();
+
     await pool.query("DELETE FROM publications WHERE id = $1", [pubId]);
     return NextResponse.json({ success: true });
   } catch (err: any) {

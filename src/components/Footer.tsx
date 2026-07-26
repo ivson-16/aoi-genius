@@ -142,6 +142,7 @@ export default async function Footer() {
         <div className="mt-12 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
           <p>© {new Date().getFullYear()} AOI GENIUS V1.0. {t("footer.rights")}</p>
           <div className="flex items-center gap-4">
+            <span className="font-mono text-[10px] text-slate-600">build V1.0.7</span>
             <span>{t("footer.powered")}</span>
           </div>
         </div>

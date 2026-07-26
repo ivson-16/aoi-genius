@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
 import { pool } from "@/db";
 import { ensureDbInitialized } from "@/lib/db-init";
+import { requireAdmin } from "@/lib/auth";
+
+const FORBIDDEN = NextResponse.json(
+  { error: "Accès refusé. Cette action nécessite des privilèges administrateur." },
+  { status: 403 }
+);
 
 export async function GET() {
   try {
+    const admin = await requireAdmin();
+    if (!admin) return FORBIDDEN;
     await ensureDbInitialized();
     const res = await pool.query(
-      "SELECT id, email, name, role, photo, country, city, profession, expertise_domain, bio, whatsapp, social_facebook, social_linkedin, social_twitter, social_github, is_email_verified FROM users ORDER BY id ASC"
+      "SELECT id, email, name, role, membership_status, photo, country, city, profession, expertise_domain, bio, whatsapp, social_facebook, social_linkedin, social_twitter, social_github, is_email_verified, created_at FROM users ORDER BY (membership_status = 'pending') DESC, id ASC"
     );
     return NextResponse.json({ users: res.rows });
   } catch (err: any) {
@@ -16,6 +24,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const admin = await requireAdmin();
+    if (!admin) return FORBIDDEN;
     await ensureDbInitialized();
     const body = await request.json();
     const {
@@ -67,8 +77,48 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const admin = await requireAdmin();
+    if (!admin) return FORBIDDEN;
     await ensureDbInitialized();
     const body = await request.json();
+
+    // ---------- DÉCISION D'ADHÉSION (approbation / refus par l'admin) ----------
+    if (body.action === "membership") {
+      const { id: targetId, decision } = body; // decision: 'approved' | 'rejected'
+      if (!targetId || !["approved", "rejected"].includes(decision)) {
+        return NextResponse.json({ error: "Décision invalide." }, { status: 400 });
+      }
+
+      const res = await pool.query(
+        `UPDATE users SET membership_status = $1, updated_at = NOW()
+         WHERE id = $2 AND role != 'admin'
+         RETURNING id, name, email, membership_status`,
+        [decision, parseInt(targetId, 10)]
+      );
+
+      if (res.rows.length === 0) {
+        return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
+      }
+
+      const target = res.rows[0];
+
+      // Notification transparente et respectueuse au candidat
+      await pool.query(
+        `INSERT INTO notifications (user_id, title, message, link, type)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          target.id,
+          decision === "approved" ? "Adhésion approuvée ! 🎉" : "Décision sur votre demande d'adhésion",
+          decision === "approved"
+            ? "Félicitations ! Votre adhésion à AOI Genius a été approuvée par l'administration. Vous bénéficiez désormais de tous les privilèges de membre : publication de projets, commentaires et réactions."
+            : "Après examen, votre demande d'adhésion n'a pas été retenue pour le moment. Vous pouvez continuer à consulter la plateforme en tant que visiteur, ou contacter l'administration pour plus d'informations.",
+          decision === "approved" ? "/dashboard" : "/contact",
+          decision === "approved" ? "success" : "warning",
+        ]
+      );
+
+      return NextResponse.json({ success: true, user: target });
+    }
     const {
       id,
       name,
@@ -128,6 +178,8 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const admin = await requireAdmin();
+    if (!admin) return FORBIDDEN;
     await ensureDbInitialized();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

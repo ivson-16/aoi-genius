@@ -58,17 +58,23 @@ export default function PublicationDetailPage() {
   };
 
   const handleLike = async () => {
+    if (!user) {
+      alert("Connectez-vous pour aimer cette publication.");
+      router.push("/login");
+      return;
+    }
     try {
-      const userId = user?.id || 1;
       const res = await fetch(`/api/publications/${pubId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "like", userId }),
+        body: JSON.stringify({ action: "like" }),
       });
       const data = await res.json();
       if (data.success) {
         setLiked(data.liked);
         setLikesCount(data.likesCount);
+      } else if (data.error) {
+        alert(data.error);
       }
     } catch (err) {
       console.error(err);
@@ -91,14 +97,18 @@ export default function PublicationDetailPage() {
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim()) return;
+    if (!user) {
+      alert("Connectez-vous pour commenter cette publication.");
+      router.push("/login");
+      return;
+    }
 
     setSubmittingComment(true);
     try {
-      const userId = user?.id || 2;
       const res = await fetch(`/api/publications/${pubId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "comment", userId, content: commentText.trim() }),
+        body: JSON.stringify({ action: "comment", content: commentText.trim() }),
       });
       const data = await res.json();
       if (data.success && data.comment) {
@@ -110,6 +120,8 @@ export default function PublicationDetailPage() {
         };
         setComments((prev) => [...prev, newC]);
         setCommentText("");
+      } else if (data.error) {
+        alert(data.error);
       }
     } catch (err) {
       console.error(err);
@@ -380,7 +392,13 @@ export default function PublicationDetailPage() {
               />
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-400">
-                  Connecté en tant que <strong className="text-slate-200">{user?.name || "Membre AOI"}</strong>
+                  {user ? (
+                    <>Connecté en tant que <strong className="text-slate-200">{user.name}</strong></>
+                  ) : (
+                    <Link href="/login" className="text-cyan-400 hover:underline font-semibold">
+                      Connectez-vous pour commenter
+                    </Link>
+                  )}
                 </span>
                 <button
                   type="submit"

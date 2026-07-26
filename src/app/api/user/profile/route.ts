@@ -5,9 +5,19 @@ import { ensureDbInitialized } from "@/lib/db-init";
 export async function PUT(request: Request) {
   try {
     await ensureDbInitialized();
+
+    // Sécurité : l'utilisateur ne peut modifier QUE son propre profil.
+    const { getSessionUser } = await import("@/lib/auth");
+    const sessionUser = await getSessionUser();
+    if (!sessionUser) {
+      return NextResponse.json(
+        { error: "Vous devez être connecté pour modifier votre profil." },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const {
-      id,
       name,
       photo,
       country,
@@ -22,9 +32,8 @@ export async function PUT(request: Request) {
       socialGithub,
     } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: "Identifiant utilisateur requis" }, { status: 400 });
-    }
+    // L'ID vient TOUJOURS de la session serveur (impossible de modifier un autre profil).
+    const id = sessionUser.id;
 
     const res = await pool.query(
       `UPDATE users
@@ -56,7 +65,7 @@ export async function PUT(request: Request) {
         socialLinkedin,
         socialTwitter,
         socialGithub,
-        parseInt(id, 10),
+        id,
       ]
     );
 

@@ -19,6 +19,7 @@ export async function GET(request: Request) {
       FROM users u
       LEFT JOIN publications p ON p.author_id = u.id AND p.status = 'approved'
       WHERE u.is_active = true
+        AND (u.membership_status = 'approved' OR u.role = 'admin')
     `;
     const params: any[] = [];
     let idx = 1;

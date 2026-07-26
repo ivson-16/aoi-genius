@@ -7,6 +7,16 @@ const MAX_PDF_SIZE = 25 * 1024 * 1024; // 25 Mo
 
 export async function POST(request: Request) {
   try {
+    // Sécurité : seul un membre approuvé (ou admin) peut envoyer des fichiers.
+    const { requireApprovedMember } = await import("@/lib/auth");
+    const sessionUser = await requireApprovedMember();
+    if (!sessionUser) {
+      return NextResponse.json(
+        { error: "Envoi réservé aux membres approuvés par l'administration." },
+        { status: 401 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get("file");
 

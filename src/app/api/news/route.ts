@@ -16,6 +16,17 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await ensureDbInitialized();
+
+    // Sécurité : seul un administrateur peut publier des actualités.
+    const { requireAdmin } = await import("@/lib/auth");
+    const admin = await requireAdmin();
+    if (!admin) {
+      return NextResponse.json(
+        { error: "Accès refusé. Seul un administrateur peut publier des actualités." },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { title, summary, content, tag, authorName, coverImage } = body;
 

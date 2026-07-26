@@ -16,6 +16,17 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await ensureDbInitialized();
+
+    // Sécurité : seul un administrateur peut gérer les catégories.
+    const { requireAdmin } = await import("@/lib/auth");
+    const admin = await requireAdmin();
+    if (!admin) {
+      return NextResponse.json(
+        { error: "Accès refusé. Seul un administrateur peut gérer les catégories." },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { name, description, icon, color } = body;
     if (!name) return NextResponse.json({ error: "Nom requis" }, { status: 400 });

@@ -112,6 +112,12 @@ export async function ensureDbInitialized() {
       );
 
       ALTER TABLE publications ADD COLUMN IF NOT EXISTS video_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS membership_status TEXT DEFAULT 'approved';
+    `);
+
+    // Les administrateurs sont toujours approuvés
+    await client.query(`
+      UPDATE users SET membership_status = 'approved' WHERE role = 'admin' AND membership_status IS DISTINCT FROM 'approved';
     `);
 
     // Attach demo videos to existing seeded publications (idempotent)

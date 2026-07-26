@@ -1,737 +1,318 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/context/AuthContext";
 import {
-  User,
-  PlusCircle,
-  Eye,
-  Heart,
-  Download,
   Bell,
-  MessageSquare,
-  Sparkles,
-  FileText,
-  Trash2,
   CheckCircle2,
   Clock,
-  XCircle,
-  Phone,
+  Download,
+  Eye,
+  FileText,
+  Heart,
+  Lock,
+  LogOut,
+  Mail,
+  PlusCircle,
   Save,
-  Layers,
+  Trash2,
+  User,
+  XCircle,
 } from "lucide-react";
 
+const CREDS_KEY = "aoi_member_creds_v1";
+
+type Tab = "publications" | "publish" | "profile" | "notifications";
+
 export default function MemberDashboard() {
-  const router = useRouter();
-  const { user, setUser } = useAuth();
-
-  const [activeTab, setActiveTab] = useState<"publications" | "publish" | "profile" | "notifications">("publications");
-  const [myPublications, setMyPublications] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [user, setUser] = useState<any>(null);
+  const [approved, setApproved] = useState(false);
+  const [publications, setPublications] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // New Publication Form State
-  const [pubTitle, setPubTitle] = useState("");
-  const [pubType, setPubType] = useState("innovation");
-  const [pubCategoryId, setPubCategoryId] = useState("1");
-  const [pubSummary, setPubSummary] = useState("");
-  const [pubContent, setPubContent] = useState("");
-  const [pubCover, setPubCover] = useState("https://images.pexels.com/photos/29320998/pexels-photo-29320998.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200");
-  const [pubPdf, setPubPdf] = useState("https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf");
-  const [pubVideo, setPubVideo] = useState("");
-  const [publishSuccess, setPublishSuccess] = useState(false);
-  const [coverUploading, setCoverUploading] = useState(false);
-  const [pdfUploading, setPdfUploading] = useState(false);
-
-  // Profile Form State
-  const [name, setName] = useState(user?.name || "");
-  const [photo, setPhoto] = useState(user?.photo || "");
-  const [profession, setProfession] = useState(user?.profession || "");
-  const [expertiseDomain, setExpertiseDomain] = useState(user?.expertise_domain || "");
-  const [country, setCountry] = useState(user?.country || "");
-  const [city, setCity] = useState(user?.city || "");
-  const [whatsapp, setWhatsapp] = useState(user?.whatsapp || "");
-  const [bio, setBio] = useState(user?.bio || "");
-  const [profileSuccess, setProfileSuccess] = useState(false);
-  const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [tab, setTab] = useState<Tab>("publications");
 
   useEffect(() => {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-    fetchDashboardData();
-  }, [user]);
-
-  const fetchDashboardData = async () => {
-    if (!user) return;
     try {
-      const [pubsRes, catsRes, notifsRes] = await Promise.all([
-        fetch(`/api/publications?authorId=${user.id}&status=all`),
-        fetch("/api/categories"),
-        fetch(`/api/notifications?userId=${user.id}`),
-      ]);
+      const saved = sessionStorage.getItem(CREDS_KEY);
+      if (saved) {
+        const { e, p } = JSON.parse(saved);
+        if (e && p) {
+          setEmail(e);
+          setPassword(p);
+          verifyAndLoad(e, p);
+        }
+      }
+    } catch {}
+  }, []);
 
-      const [pubsData, catsData, notifsData] = await Promise.all([
-        pubsRes.json(),
-        catsRes.json(),
-        notifsRes.json(),
-      ]);
+  async function directCall(op: string, payload?: any, e = email, p = password) {
+    const response = await fetch("/api/member/direct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: e, password: p, op, payload }),
+    });
+    const data = await response.json();
+    return { response, data };
+  }
 
-      if (pubsData.publications) setMyPublications(pubsData.publications);
-      if (catsData.categories) setCategories(catsData.categories);
-      if (notifsData.notifications) setNotifications(notifsData.notifications);
-    } catch (err) {
-      console.error(err);
+  async function verifyAndLoad(e: string, p: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const { response, data } = await directCall("load", undefined, e, p);
+      if (!response.ok || data.error) {
+        setError(data.error || "Connexion impossible.");
+        setAuthenticated(false);
+        try { sessionStorage.removeItem(CREDS_KEY); } catch {}
+        return;
+      }
+      setUser(data.user);
+      setApproved(Boolean(data.approved));
+      setPublications(data.publications || []);
+      setNotifications(data.notifications || []);
+      setCategories(data.categories || []);
+      setAuthenticated(true);
+      try { sessionStorage.setItem(CREDS_KEY, JSON.stringify({ e, p })); } catch {}
+    } catch {
+      setError("Erreur réseau. Réessayez.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handlePublishSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      const res = await fetch("/api/publications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: pubTitle,
-          type: pubType,
-          summary: pubSummary,
-          content: pubContent,
-          categoryId: pubCategoryId,
-          authorId: user.id,
-          coverImage: pubCover,
-          pdfUrl: pubPdf,
-          videoUrl: pubVideo.trim() || null,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPublishSuccess(true);
-        setPubTitle("");
-        setPubSummary("");
-        setPubContent("");
-        fetchDashboardData();
-        setTimeout(() => {
-          setPublishSuccess(false);
-          setActiveTab("publications");
-        }, 1500);
-      }
-    } catch (err) {
-      console.error(err);
+  async function reload() {
+    const { data } = await directCall("load");
+    if (data.user) {
+      setUser(data.user);
+      setApproved(Boolean(data.approved));
+      setPublications(data.publications || []);
+      setNotifications(data.notifications || []);
+      setCategories(data.categories || []);
     }
-  };
+  }
 
-  const handleDeletePublication = async (id: number) => {
-    if (!confirm("Voulez-vous vraiment supprimer cette publication ?")) return;
-    try {
-      const res = await fetch(`/api/publications/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        alert(data.error || "Impossible de supprimer cette publication pour le moment.");
-        return;
-      }
-      setMyPublications((prev) => prev.filter((p) => p.id !== id));
-      fetchDashboardData();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur réseau pendant la suppression de la publication.");
-    }
-  };
+  function logout() {
+    try { sessionStorage.removeItem(CREDS_KEY); } catch {}
+    setAuthenticated(false);
+    setEmail("");
+    setPassword("");
+    setUser(null);
+  }
 
-  const uploadImageFromDevice = async (
-    file: File,
-    onSuccess: (url: string) => void,
-    setUploading: (value: boolean) => void
-  ) => {
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        alert(data.error || "Impossible de charger cette image.");
-        return;
-      }
-      onSuccess(data.url);
-    } catch (err) {
-      console.error(err);
-      alert("Erreur pendant l'envoi de l'image.");
-    } finally {
-      setUploading(false);
-    }
-  };
+  if (!authenticated) {
+    return (
+      <div className="min-h-[75vh] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md space-y-5">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white mx-auto shadow-lg">
+              <User className="w-7 h-7" />
+            </div>
+            <h1 className="text-2xl font-black text-white">Espace Membre</h1>
+            <p className="text-xs text-slate-300">Connectez-vous avec votre compte pour accéder à vos privilèges.</p>
+          </div>
 
-  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadImageFromDevice(file, setPubCover, setCoverUploading);
-  };
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              verifyAndLoad(email.trim(), password);
+            }}
+            className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xl"
+          >
+            {error && <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs">{error}</div>}
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-medium">Adresse e-mail</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-medium">Mot de passe</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500" />
+              </div>
+            </div>
+            <button disabled={loading} className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold text-sm disabled:opacity-60">
+              {loading ? "Vérification..." : "Ouvrir mon espace membre"}
+            </button>
+            <p className="text-center text-[10px] text-slate-500 font-mono">build V1.0.9 · console membre autonome</p>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
-  const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadImageFromDevice(file, setPubPdf, setPdfUploading);
-  };
+  if (!approved) {
+    const rejected = user?.membership_status === "rejected";
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-20">
+        <div className={`bg-slate-900 border-2 ${rejected ? "border-rose-500/40" : "border-amber-500/40"} rounded-3xl p-8 text-center space-y-5`}>
+          {rejected ? <XCircle className="w-14 h-14 text-rose-400 mx-auto" /> : <Clock className="w-14 h-14 text-amber-400 mx-auto" />}
+          <h1 className="text-2xl font-black text-white">{rejected ? "Demande d’adhésion non retenue" : "Adhésion en cours d’examen"}</h1>
+          <p className="text-sm text-slate-300">
+            {rejected
+              ? "Votre demande n’a pas été retenue pour le moment. Contactez l’administration si vous souhaitez davantage d’informations."
+              : `Bonjour ${user?.name}, l’administrateur doit encore approuver votre adhésion avant que vous puissiez publier, commenter ou aimer.`}
+          </p>
+          <div className="flex justify-center gap-3">
+            <Link href="/publications" className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold">Consulter les publications</Link>
+            <Link href="/contact" className="px-5 py-2.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold">Contacter l’administration</Link>
+            <button onClick={logout} className="px-5 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Déconnexion</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const handleProfilePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadImageFromDevice(file, setPhoto, setProfilePhotoUploading);
-  };
-
-  const handleProfileSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      const res = await fetch("/api/user/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: user.id,
-          name,
-          photo,
-          profession,
-          expertiseDomain,
-          country,
-          city,
-          whatsapp,
-          bio,
-        }),
-      });
-      const data = await res.json();
-      if (data.success && data.user) {
-        setUser({ ...user, ...data.user });
-        setProfileSuccess(true);
-        setTimeout(() => setProfileSuccess(false), 3000);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Compute aggregated stats
-  const totalViews = myPublications.reduce((acc, p) => acc + (p.views_count || 0), 0);
-  const totalLikes = myPublications.reduce((acc, p) => acc + (p.likes_count || 0), 0);
+  const totalViews = publications.reduce((sum, publication) => sum + (publication.views_count || 0), 0);
+  const totalLikes = publications.reduce((sum, publication) => sum + (publication.likes_count || 0), 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          {user?.photo ? (
-            <img
-              src={user.photo}
-              alt={user.name}
-              className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-400 shadow-md"
-            />
-          ) : (
-            <div className="w-16 h-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-2xl">
-              {user?.name?.charAt(0)}
-            </div>
-          )}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col sm:flex-row justify-between gap-4">
+        <div className="flex gap-4 items-center">
+          {user?.photo ? <img src={user.photo} alt={user.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-400" /> : <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-2xl font-bold">{user?.name?.charAt(0)}</div>}
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-white">{user?.name}</h1>
-              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded uppercase">
-                Membre Vérifié
-              </span>
+              <h1 className="text-xl font-black text-white">{user?.name}</h1>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30">MEMBRE APPROUVÉ</span>
             </div>
-            <p className="text-xs text-cyan-300 font-medium">{user?.profession}</p>
-            <p className="text-[11px] text-slate-400">
-              {user?.city}, {user?.country} • Spécialité : {user?.expertise_domain}
-            </p>
+            <p className="text-xs text-cyan-300">{user?.profession}</p>
+            <p className="text-[11px] text-slate-400">{user?.city}, {user?.country} · {user?.expertise_domain}</p>
           </div>
         </div>
-
-        <button
-          onClick={() => setActiveTab("publish")}
-          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center gap-2"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>Publier un Projet</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setTab("publish")} className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold text-xs flex gap-2"><PlusCircle className="w-4 h-4" /> Publier</button>
+          <button onClick={logout} className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold flex gap-2"><LogOut className="w-4 h-4" /> Déconnexion</button>
+        </div>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-center">
-          <span className="text-xs text-slate-400 font-medium">Mes Publications</span>
-          <span className="block text-2xl sm:text-3xl font-black text-white mt-1">
-            {myPublications.length}
-          </span>
-        </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-center">
-          <span className="text-xs text-slate-400 font-medium">Total Vues</span>
-          <span className="block text-2xl sm:text-3xl font-black text-cyan-400 mt-1">
-            {totalViews}
-          </span>
-        </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-center">
-          <span className="text-xs text-slate-400 font-medium">Mentions J'aime</span>
-          <span className="block text-2xl sm:text-3xl font-black text-rose-400 mt-1">
-            {totalLikes}
-          </span>
-        </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-center">
-          <span className="text-xs text-slate-400 font-medium">Notifications</span>
-          <span className="block text-2xl sm:text-3xl font-black text-amber-400 mt-1">
-            {notifications.length}
-          </span>
-        </div>
+        {[
+          ["Mes publications", publications.length, "text-white"],
+          ["Total vues", totalViews, "text-cyan-400"],
+          ["Mentions J’aime", totalLikes, "text-rose-400"],
+          ["Notifications", notifications.length, "text-amber-400"],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-center">
+            <span className="text-xs text-slate-400">{label}</span>
+            <span className={`block text-2xl font-black mt-1 ${color}`}>{value}</span>
+          </div>
+        ))}
       </div>
 
-      {/* Navigation Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
-        <button
-          onClick={() => setActiveTab("publications")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === "publications"
-              ? "bg-blue-600 text-white shadow-md"
-              : "bg-slate-900 text-slate-300 hover:bg-slate-800"
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Mes Publications ({myPublications.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("publish")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === "publish"
-              ? "bg-blue-600 text-white shadow-md"
-              : "bg-slate-900 text-slate-300 hover:bg-slate-800"
-          }`}
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>Nouvelle Publication</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("profile")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === "profile"
-              ? "bg-blue-600 text-white shadow-md"
-              : "bg-slate-900 text-slate-300 hover:bg-slate-800"
-          }`}
-        >
-          <User className="w-4 h-4" />
-          <span>Modifier mon Profil</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("notifications")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === "notifications"
-              ? "bg-blue-600 text-white shadow-md"
-              : "bg-slate-900 text-slate-300 hover:bg-slate-800"
-          }`}
-        >
-          <Bell className="w-4 h-4" />
-          <span>Notifications ({notifications.length})</span>
-        </button>
+        {[
+          ["publications", "Mes publications", FileText],
+          ["publish", "Nouvelle publication", PlusCircle],
+          ["profile", "Mon profil", User],
+          ["notifications", "Notifications", Bell],
+        ].map(([key, label, Icon]: any) => (
+          <button key={key} onClick={() => setTab(key)} className={`px-4 py-2 rounded-xl text-xs font-bold flex gap-2 ${tab === key ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-300"}`}><Icon className="w-4 h-4" /> {label}</button>
+        ))}
       </div>
 
-      {/* TAB 1: MY PUBLICATIONS */}
-      {activeTab === "publications" && (
-        <div className="space-y-4">
-          {myPublications.length === 0 ? (
-            <div className="p-12 text-center bg-slate-900 border border-slate-800 rounded-3xl space-y-3">
-              <p className="text-slate-300 text-sm font-semibold">Vous n'avez pas encore publié d'innovation.</p>
-              <button
-                onClick={() => setActiveTab("publish")}
-                className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl"
-              >
-                Créer ma première publication
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {myPublications.map((pub) => (
-                <div
-                  key={pub.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-4"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded">
-                        {pub.category_name}
-                      </span>
-
-                      {/* Status Badge */}
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded capitalize flex items-center gap-1 ${
-                          pub.status === "approved"
-                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                            : pub.status === "pending"
-                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                            : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                        }`}
-                      >
-                        {pub.status === "approved" && <CheckCircle2 className="w-3 h-3" />}
-                        {pub.status === "pending" && <Clock className="w-3 h-3" />}
-                        {pub.status === "rejected" && <XCircle className="w-3 h-3" />}
-                        <span>
-                          {pub.status === "approved"
-                            ? "Validé"
-                            : pub.status === "pending"
-                            ? "En Attente de Modération"
-                            : "Refusé"}
-                        </span>
-                      </span>
-                    </div>
-
-                    <h3 className="font-bold text-base text-white">{pub.title}</h3>
-                    <p className="text-xs text-slate-300 line-clamp-2">{pub.summary}</p>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-3 text-slate-400">
-                      <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" /> {pub.views_count}</span>
-                      <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5 text-rose-400" /> {pub.likes_count}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/publications/${pub.id}`}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold"
-                      >
-                        Voir
-                      </Link>
-                      <button
-                        onClick={() => handleDeletePublication(pub.id)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 transition"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 2: PUBLISH FORM */}
-      {activeTab === "publish" && (
-        <form onSubmit={handlePublishSubmit} className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4">
-          <h3 className="text-lg font-bold text-white">Formulaire de Publication d'Innovation</h3>
-
-          {publishSuccess && (
-            <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs rounded-xl flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Publication enregistrée avec succès ! Redirection...</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Titre de la Publication *</label>
-              <input
-                type="text"
-                required
-                placeholder="Ex: Système de pompage solaire à haut rendement"
-                value={pubTitle}
-                onChange={(e) => setPubTitle(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Catégorie / Domaine *</label>
-              <select
-                value={pubCategoryId}
-                onChange={(e) => setPubCategoryId(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-              >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Type de Publication</label>
-              <select
-                value={pubType}
-                onChange={(e) => setPubType(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-              >
-                <option value="innovation">Innovation Technologique</option>
-                <option value="project">Projet d'Ingénierie</option>
-                <option value="technical_report">Rapport Technique</option>
-                <option value="article">Article de Recherche</option>
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Image de couverture</label>
-              {pubCover && (
-                <img
-                  src={pubCover}
-                  alt="Aperçu couverture"
-                  className="w-full h-24 object-cover rounded-xl border border-slate-700 mb-2"
-                />
-              )}
-              <input
-                type="text"
-                value={pubCover}
-                onChange={(e) => setPubCover(e.target.value)}
-                placeholder="URL de l'image ou chargez depuis l'appareil"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-              />
-              <label className="block cursor-pointer text-center bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold text-xs rounded-xl p-2 transition">
-                {coverUploading ? "Chargement en cours..." : "Charger une image depuis mon appareil"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleCoverUpload}
-                  className="hidden"
-                  disabled={coverUploading}
-                />
-              </label>
-            </div>
-          </div>
-
-          {/* Media & Documentation Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-800/40 border border-slate-700/60">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-cyan-400" />
-                Document PDF (résultats, rapport technique)
-              </label>
-              <input
-                type="text"
-                value={pubPdf}
-                onChange={(e) => setPubPdf(e.target.value)}
-                placeholder="URL du PDF ou chargez depuis l'appareil"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-              />
-              <label className="block cursor-pointer text-center bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold text-xs rounded-xl p-2 transition">
-                {pdfUploading ? "Chargement du PDF..." : "Charger un PDF depuis mon appareil (max 25 Mo)"}
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={handlePdfUpload}
-                  className="hidden"
-                  disabled={pdfUploading}
-                />
-              </label>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                Vidéo de démonstration (optionnelle, max 10 min)
-              </label>
-              <input
-                type="text"
-                value={pubVideo}
-                onChange={(e) => setPubVideo(e.target.value)}
-                placeholder="Lien YouTube ou fichier .mp4"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-              />
-              <p className="text-[10px] text-slate-500 leading-relaxed">
-                Collez un lien YouTube (youtube.com/watch?v=...) ou l'URL d'un fichier .mp4 hébergé pour montrer votre prototype en action.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs text-slate-300 font-medium">Résumé Exécutif *</label>
-            <textarea
-              rows={2}
-              required
-              placeholder="Décrivez brièvement le problème résolu et la portée de la solution..."
-              value={pubSummary}
-              onChange={(e) => setPubSummary(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 resize-none"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs text-slate-300 font-medium">Contenu & Description Technique Détaillée *</label>
-            <textarea
-              rows={5}
-              required
-              placeholder="Détails de l'architecture, protocoles, résultats de tests et méthodologie..."
-              value={pubContent}
-              onChange={(e) => setPubContent(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 text-white font-bold text-xs rounded-xl shadow-lg"
-          >
-            Soumettre la Publication
-          </button>
-        </form>
-      )}
-
-      {/* TAB 3: EDIT PROFILE */}
-      {activeTab === "profile" && (
-        <form onSubmit={handleProfileSave} className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4">
-          <h3 className="text-lg font-bold text-white">Modifier mes Informations Personnelles</h3>
-
-          {profileSuccess && (
-            <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs rounded-xl flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Profil mis à jour avec succès !</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Nom & Prénom</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Photo de profil</label>
-              {photo && (
-                <img
-                  src={photo}
-                  alt="Aperçu profil"
-                  className="w-20 h-20 rounded-2xl object-cover border border-cyan-400 mb-2"
-                />
-              )}
-              <input
-                type="text"
-                value={photo}
-                onChange={(e) => setPhoto(e.target.value)}
-                placeholder="URL de la photo ou chargez depuis l'appareil"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-              />
-              <label className="block cursor-pointer text-center bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold text-xs rounded-xl p-2 transition">
-                {profilePhotoUploading ? "Chargement en cours..." : "Charger une photo depuis mon appareil"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleProfilePhotoUpload}
-                  className="hidden"
-                  disabled={profilePhotoUploading}
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Profession / Titre</label>
-              <input
-                type="text"
-                value={profession}
-                onChange={(e) => setProfession(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Domaine d'expertise</label>
-              <input
-                type="text"
-                value={expertiseDomain}
-                onChange={(e) => setExpertiseDomain(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Pays</label>
-              <input
-                type="text"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">Ville</label>
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300 font-medium">WhatsApp</label>
-              <input
-                type="text"
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs text-slate-300 font-medium">Biographie</label>
-            <textarea
-              rows={3}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center gap-2"
-          >
-            <Save className="w-4 h-4" />
-            <span>Enregistrer les Modifications</span>
-          </button>
-        </form>
-      )}
-
-      {/* TAB 4: NOTIFICATIONS */}
-      {activeTab === "notifications" && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-3">
-          <h3 className="text-lg font-bold text-white mb-2">Centre de Notifications</h3>
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-start justify-between gap-4"
-            >
-              <div className="space-y-1">
-                <span className="font-bold text-xs text-cyan-300">{n.title}</span>
-                <p className="text-xs text-slate-300">{n.message}</p>
-                <span className="text-[10px] text-slate-500 block">
-                  {new Date(n.created_at).toLocaleDateString("fr-FR")}
-                </span>
-              </div>
-              {n.link && (
-                <Link
-                  href={n.link}
-                  className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-lg shrink-0"
-                >
-                  Voir
-                </Link>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      {tab === "publications" && <PublicationsList publications={publications} call={directCall} onChange={reload} />}
+      {tab === "publish" && <PublishForm categories={categories} email={email} password={password} call={directCall} onDone={async () => { await reload(); setTab("publications"); }} />}
+      {tab === "profile" && <ProfileForm user={user} email={email} password={password} call={directCall} onDone={reload} />}
+      {tab === "notifications" && <NotificationsList notifications={notifications} call={directCall} />}
     </div>
   );
+}
+
+function PublicationsList({ publications, call, onChange }: any) {
+  async function remove(id: number) {
+    if (!confirm("Supprimer définitivement cette publication ?")) return;
+    const { data } = await call("deletePublication", { id });
+    if (data.error) return alert(data.error);
+    onChange();
+  }
+  if (!publications.length) return <div className="p-12 text-center bg-slate-900 border border-slate-800 rounded-3xl text-sm text-slate-300">Vous n’avez pas encore publié de projet.</div>;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {publications.map((publication: any) => (
+        <div key={publication.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="flex justify-between gap-3">
+            <span className="text-[10px] uppercase text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded">{publication.category_name}</span>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded ${publication.status === "approved" ? "bg-emerald-500/20 text-emerald-300" : publication.status === "pending" ? "bg-amber-500/20 text-amber-300" : "bg-rose-500/20 text-rose-300"}`}>
+              {publication.status === "approved" ? "Validée" : publication.status === "pending" ? "En attente" : "Refusée"}
+            </span>
+          </div>
+          <div><h3 className="font-bold text-white">{publication.title}</h3><p className="text-xs text-slate-300 line-clamp-2 mt-1">{publication.summary}</p></div>
+          <div className="pt-3 border-t border-slate-800 flex justify-between">
+            <div className="flex gap-3 text-xs text-slate-400"><span className="flex gap-1"><Eye className="w-3.5 h-3.5" />{publication.views_count}</span><span className="flex gap-1"><Heart className="w-3.5 h-3.5" />{publication.likes_count}</span></div>
+            <div className="flex gap-2"><Link href={`/publications/${publication.id}`} className="px-3 py-1.5 rounded-lg bg-slate-800 text-cyan-300 text-xs">Voir</Link><button onClick={() => remove(publication.id)} className="p-1.5 rounded-lg bg-slate-800 text-rose-400"><Trash2 className="w-3.5 h-3.5" /></button></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PublishForm({ categories, email, password, call, onDone }: any) {
+  const [title, setTitle] = useState("");
+  const [type, setType] = useState("innovation");
+  const [categoryId, setCategoryId] = useState(String(categories[0]?.id || 1));
+  const [summary, setSummary] = useState("");
+  const [content, setContent] = useState("");
+  const [coverImage, setCoverImage] = useState("");
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [uploading, setUploading] = useState("");
+
+  async function upload(file: File, target: "cover" | "pdf") {
+    setUploading(target);
+    const form = new FormData();
+    form.append("email", email); form.append("password", password); form.append("file", file);
+    const response = await fetch("/api/member/upload", { method: "POST", body: form });
+    const data = await response.json();
+    setUploading("");
+    if (data.error) return alert(data.error);
+    target === "cover" ? setCoverImage(data.url) : setPdfUrl(data.url);
+  }
+
+  return (
+    <form onSubmit={async (event) => { event.preventDefault(); const { data } = await call("createPublication", { title, type, categoryId, summary, content, coverImage, pdfUrl, videoUrl }); if (data.error) return alert(data.error); alert("Publication soumise à la validation de l’administrateur."); onDone(); }} className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4">
+      <h3 className="text-lg font-bold text-white">Nouvelle publication</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre du projet" className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white" />
+        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white">{categories.map((category: any) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+        <select value={type} onChange={(e) => setType(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white"><option value="innovation">Innovation</option><option value="project">Projet</option><option value="article">Article</option><option value="technical_report">Rapport technique</option></select>
+        <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="Lien vidéo (optionnel)" className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white" />
+      </div>
+      <textarea required rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Résumé exécutif" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white" />
+      <textarea required rows={5} value={content} onChange={(e) => setContent(e.target.value)} placeholder="Description technique détaillée" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <label className="p-3 rounded-xl bg-slate-800 border border-slate-700 text-xs text-cyan-300 text-center cursor-pointer">{uploading === "cover" ? "Envoi..." : coverImage ? "Image chargée ✓" : "Charger l’image de couverture"}<input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "cover")} /></label>
+        <label className="p-3 rounded-xl bg-slate-800 border border-slate-700 text-xs text-cyan-300 text-center cursor-pointer">{uploading === "pdf" ? "Envoi..." : pdfUrl ? "PDF chargé ✓" : "Charger le document PDF"}<input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "pdf")} /></label>
+      </div>
+      <button className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold text-sm">Soumettre à validation</button>
+    </form>
+  );
+}
+
+function ProfileForm({ user, email, password, call, onDone }: any) {
+  const [form, setForm] = useState({ name: user.name || "", photo: user.photo || "", country: user.country || "", city: user.city || "", profession: user.profession || "", expertiseDomain: user.expertise_domain || "", bio: user.bio || "", whatsapp: user.whatsapp || "" });
+  const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  async function upload(file: File) { const dataForm = new FormData(); dataForm.append("email", email); dataForm.append("password", password); dataForm.append("file", file); const response = await fetch("/api/member/upload", { method: "POST", body: dataForm }); const data = await response.json(); if (data.error) return alert(data.error); set("photo", data.url); }
+  return (
+    <form onSubmit={async (e) => { e.preventDefault(); const { data } = await call("updateProfile", form); if (data.error) return alert(data.error); alert("Profil mis à jour."); onDone(); }} className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4">
+      <h3 className="text-lg font-bold text-white">Modifier mon profil</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{[["name","Nom complet"],["profession","Profession"],["country","Pays"],["city","Ville"],["expertiseDomain","Expertise"],["whatsapp","WhatsApp"]].map(([key,label]) => <input key={key} value={(form as any)[key]} onChange={(e) => set(key,e.target.value)} placeholder={label} className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white" />)}</div>
+      <textarea rows={3} value={form.bio} onChange={(e) => set("bio", e.target.value)} placeholder="Biographie" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white" />
+      <label className="block p-3 rounded-xl bg-slate-800 border border-slate-700 text-xs text-cyan-300 text-center cursor-pointer">Charger une nouvelle photo<input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} /></label>
+      <button className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold flex gap-2"><Save className="w-4 h-4" /> Enregistrer</button>
+    </form>
+  );
+}
+
+function NotificationsList({ notifications, call }: any) {
+  return <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-3">{notifications.length ? notifications.map((notification: any) => <div key={notification.id} className="p-4 rounded-2xl bg-slate-800 border border-slate-700"><p className="text-xs font-bold text-cyan-300">{notification.title}</p><p className="text-xs text-slate-300 mt-1">{notification.message}</p></div>) : <p className="text-sm text-slate-400 text-center py-8">Aucune notification.</p>}</div>;
 }
